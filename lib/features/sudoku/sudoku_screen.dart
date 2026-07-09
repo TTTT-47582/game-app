@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../engine/sudoku/sudoku.dart';
@@ -11,18 +13,76 @@ class SudokuScreen extends StatefulWidget {
   State<SudokuScreen> createState() => _SudokuScreenState();
 }
 
-class _SudokuScreenState extends State<SudokuScreen> {
+class _SudokuScreenState extends State<SudokuScreen> with WidgetsBindingObserver {
   SudokuSize _size = SudokuSize.size9;
   SudokuDifficulty _difficulty = SudokuDifficulty.medium;
   late SudokuPuzzle _puzzle;
   late SudokuBoard _board;
   SudokuCell? _selected;
+  Map<SudokuCell, Set<int>> _notes = {};
+  bool _notesMode = false;
+  int _mistakeCount = 0;
+  int _pauseCount = 0;
+  int _resumedElapsedSeconds = 0;
+  final Stopwatch _stopwatch = Stopwatch();
+  bool _loading = true;
+
+  Duration get _elapsed => Duration(seconds: _resumedElapsedSeconds) + _stopwatch.elapsed;
 
   @override
   void initState() {
     super.initState();
-    _puzzle = SudokuGenerator().generate(_size, _difficulty);
-    _board = _puzzle.givens.copy();
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(_restoreOrStartNewGame());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (_loading) return;
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      if (_stopwatch.isRunning) {
+        _stopwatch.stop();
+        _pauseCount++;
+        _persist();
+      }
+    } else if (state == AppLifecycleState.resumed) {
+      if (!_stopwatch.isRunning && !_board.isSolved) {
+        _stopwatch.start();
+      }
+    }
+  }
+
+  Future<void> _restoreOrStartNewGame() async {
+    final saved = await SudokuProgressStore.load();
+    if (saved != null) {
+      _size = saved.size;
+      _difficulty = saved.difficulty;
+      _puzzle = SudokuPuzzle(
+        size: saved.size,
+        givens: SudokuBoard.fromFlat(saved.size, saved.givens),
+        solution: SudokuBoard.fromFlat(saved.size, saved.solution),
+      );
+      _board = SudokuBoard.fromFlat(saved.size, saved.board);
+      _notes = {
+        for (final entry in saved.notes.entries)
+          SudokuCell(entry.key ~/ saved.size.side, entry.key % saved.size.side):
+              entry.value.toSet(),
+      };
+      _mistakeCount = saved.mistakeCount;
+      _pauseCount = saved.pauseCount;
+      _resumedElapsedSeconds = saved.elapsedSeconds;
+      _stopwatch.start();
+      setState(() => _loading = false);
+    } else {
+      _generateNewPuzzle(_size, _difficulty);
+      setState(() => _loading = false);
+    }
   }
 
   bool _isGiven(SudokuCell cell) => _puzzle.givens.at(cell.row, cell.col) != 0;
@@ -32,37 +92,105 @@ class _SudokuScreenState extends State<SudokuScreen> {
   void _enterValue(int value) {
     final cell = _selected;
     if (cell == null || _isGiven(cell)) return;
-    setState(() => _board.set(cell.row, cell.col, value));
-    if (_board.isSolved) _showWinDialog();
+
+    if (_notesMode) {
+      setState(() {
+        final cellNotes = _notes.putIfAbsent(cell, () => <int>{});
+        if (!cellNotes.add(value)) cellNotes.remove(value);
+        if (cellNotes.isEmpty) _notes.remove(cell);
+      });
+      _persist();
+      return;
+    }
+
+    setState(() {
+      _board.set(cell.row, cell.col, value);
+      _notes.remove(cell);
+      if (_board.conflicts().contains(cell)) _mistakeCount++;
+    });
+    _persist();
+    if (_board.isSolved) unawaited(_onSolved());
   }
 
   void _clearSelected() {
     final cell = _selected;
     if (cell == null || _isGiven(cell)) return;
     setState(() => _board.set(cell.row, cell.col, 0));
+    _persist();
+  }
+
+  void _generateNewPuzzle(SudokuSize size, SudokuDifficulty difficulty) {
+    _size = size;
+    _difficulty = difficulty;
+    _puzzle = SudokuGenerator().generate(size, difficulty);
+    _board = _puzzle.givens.copy();
+    _selected = null;
+    _notes = {};
+    _mistakeCount = 0;
+    _pauseCount = 0;
+    _resumedElapsedSeconds = 0;
+    _stopwatch
+      ..reset()
+      ..start();
   }
 
   void _startNewGame(SudokuSize size, SudokuDifficulty difficulty) {
-    setState(() {
-      _size = size;
-      _difficulty = difficulty;
-      _puzzle = SudokuGenerator().generate(size, difficulty);
-      _board = _puzzle.givens.copy();
-      _selected = null;
-    });
+    setState(() => _generateNewPuzzle(size, difficulty));
+    _persist();
   }
 
-  Future<void> _showWinDialog() async {
+  void _persist() {
+    if (_loading) return;
+    unawaited(
+      SudokuProgressStore.save(
+        SudokuSaveState(
+          size: _size,
+          difficulty: _difficulty,
+          givens: _puzzle.givens.toFlat(),
+          solution: _puzzle.solution.toFlat(),
+          board: _board.toFlat(),
+          notes: {
+            for (final entry in _notes.entries)
+              entry.key.row * _size.side + entry.key.col: entry.value.toList(),
+          },
+          mistakeCount: _mistakeCount,
+          pauseCount: _pauseCount,
+          elapsedSeconds: _elapsed.inSeconds,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _onSolved() async {
+    _stopwatch.stop();
+    final elapsed = _elapsed;
+    final nextDifficulty = SudokuDifficultyAdjuster.next(
+      current: _difficulty,
+      size: _size,
+      mistakeCount: _mistakeCount,
+      pauseCount: _pauseCount,
+      elapsed: elapsed,
+    );
+    await SudokuProgressStore.clear();
+    await _showWinDialog(nextDifficulty, elapsed);
+  }
+
+  Future<void> _showWinDialog(SudokuDifficulty nextDifficulty, Duration elapsed) async {
+    final changed = nextDifficulty != _difficulty;
     await showDialog<void>(
       context: context,
+      barrierDismissible: false,
       builder: (context) => AlertDialog(
         title: const Text('クリア！'),
-        content: const Text('おめでとうございます。すべてのマスが埋まりました。'),
+        content: Text(
+          'おめでとうございます。${_formatDuration(elapsed)}で解けました。'
+          '${changed ? '\n次回は${_difficultyLabel(nextDifficulty)}に挑戦してみましょう。' : ''}',
+        ),
         actions: [
           TextButton(
             onPressed: () {
               Navigator.of(context).pop();
-              _startNewGame(_size, _difficulty);
+              _startNewGame(_size, nextDifficulty);
             },
             child: const Text('もう一度あそぶ'),
           ),
@@ -84,10 +212,26 @@ class _SudokuScreenState extends State<SudokuScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('数独'),
         actions: [
+          if (_notesMode)
+            IconButton.filled(
+              icon: const Icon(Icons.edit_note),
+              tooltip: 'メモ入力: オン(タップでオフ)',
+              onPressed: () => setState(() => _notesMode = false),
+            )
+          else
+            IconButton(
+              icon: const Icon(Icons.edit_note),
+              tooltip: 'メモ入力: オフ(タップでオン)',
+              onPressed: () => setState(() => _notesMode = true),
+            ),
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: '新しいパズル',
@@ -111,6 +255,7 @@ class _SudokuScreenState extends State<SudokuScreen> {
                       givens: _puzzle.givens,
                       conflicts: _board.conflicts(),
                       selected: _selected,
+                      notes: _notes,
                       onCellTap: _selectCell,
                     ),
                   ),
@@ -128,6 +273,18 @@ class _SudokuScreenState extends State<SudokuScreen> {
       ),
     );
   }
+}
+
+String _difficultyLabel(SudokuDifficulty difficulty) => switch (difficulty) {
+      SudokuDifficulty.easy => 'やさしい',
+      SudokuDifficulty.medium => 'ふつう',
+      SudokuDifficulty.hard => 'むずかしい',
+    };
+
+String _formatDuration(Duration d) {
+  final minutes = d.inMinutes;
+  final seconds = d.inSeconds % 60;
+  return minutes > 0 ? '$minutes分$seconds秒' : '$seconds秒';
 }
 
 class _NewGameSheet extends StatefulWidget {

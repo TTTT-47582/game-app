@@ -14,6 +14,7 @@ class SudokuGridView extends StatelessWidget {
     required this.conflicts,
     required this.selected,
     required this.onCellTap,
+    this.notes = const {},
   });
 
   final SudokuBoard board;
@@ -21,6 +22,9 @@ class SudokuGridView extends StatelessWidget {
   final Set<SudokuCell> conflicts;
   final SudokuCell? selected;
   final ValueChanged<SudokuCell> onCellTap;
+
+  /// Candidate numbers penciled into empty cells, keyed by cell.
+  final Map<SudokuCell, Set<int>> notes;
 
   @override
   Widget build(BuildContext context) {
@@ -42,6 +46,7 @@ class SudokuGridView extends StatelessWidget {
                       hasConflict: conflicts.contains(SudokuCell(row, col)),
                       isSelected: selected == SudokuCell(row, col),
                       isPeer: _isPeer(row, col, size),
+                      notes: notes[SudokuCell(row, col)],
                       thickRight: _isBoxBoundary(col + 1, size.boxCols, size.side),
                       thickBottom: _isBoxBoundary(row + 1, size.boxRows, size.side),
                       colorScheme: colorScheme,
@@ -76,6 +81,7 @@ class _SudokuCellView extends StatelessWidget {
     required this.hasConflict,
     required this.isSelected,
     required this.isPeer,
+    required this.notes,
     required this.thickRight,
     required this.thickBottom,
     required this.colorScheme,
@@ -87,6 +93,7 @@ class _SudokuCellView extends StatelessWidget {
   final bool hasConflict;
   final bool isSelected;
   final bool isPeer;
+  final Set<int>? notes;
   final bool thickRight;
   final bool thickBottom;
   final ColorScheme colorScheme;
@@ -124,7 +131,7 @@ class _SudokuCellView extends StatelessWidget {
         ),
         alignment: Alignment.center,
         child: value == 0
-            ? null
+            ? _buildNotes(context)
             : Stack(
                 alignment: Alignment.center,
                 children: [
@@ -151,6 +158,27 @@ class _SudokuCellView extends StatelessWidget {
                     ),
                 ],
               ),
+      ),
+    );
+  }
+
+  Widget? _buildNotes(BuildContext context) {
+    final values = notes;
+    if (values == null || values.isEmpty) return null;
+    final sorted = values.toList()..sort();
+    return Padding(
+      padding: const EdgeInsets.all(2),
+      child: Wrap(
+        alignment: WrapAlignment.center,
+        runAlignment: WrapAlignment.center,
+        spacing: 2,
+        children: [
+          for (final n in sorted)
+            Text(
+              '$n',
+              style: TextStyle(fontSize: 9, color: colorScheme.onSurfaceVariant),
+            ),
+        ],
       ),
     );
   }

@@ -1,44 +1,44 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:game_app/engine/sudoku/sudoku.dart';
 import 'package:game_app/features/sudoku/sudoku_screen.dart';
 import 'package:game_app/features/sudoku/widgets/number_pad.dart';
 import 'package:game_app/features/sudoku/widgets/sudoku_grid_view.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
+
+  Finder cellFinderAt(int row, int col, int side) => find
+      .descendant(
+        of: find.byType(SudokuGridView),
+        matching: find.byType(GestureDetector),
+      )
+      .at(row * side + col);
+
+  ({int row, int col}) findEmptyCell(SudokuGridView gridView) {
+    final board = gridView.board;
+    final givens = gridView.givens;
+    for (var row = 0; row < board.size.side; row++) {
+      for (var col = 0; col < board.size.side; col++) {
+        if (givens.at(row, col) == 0) return (row: row, col: col);
+      }
+    }
+    throw StateError('puzzle must have empty cells');
+  }
+
   testWidgets('tapping an empty cell then a digit fills it in', (
     tester,
   ) async {
-    await tester.pumpWidget(
-      const MaterialApp(home: SudokuScreen()),
-    );
+    await tester.pumpWidget(const MaterialApp(home: SudokuScreen()));
+    await tester.pumpAndSettle();
 
-    final gridView = tester.widget<SudokuGridView>(
-      find.byType(SudokuGridView),
-    );
-    final board = gridView.board;
-    final givens = gridView.givens;
+    final gridView = tester.widget<SudokuGridView>(find.byType(SudokuGridView));
+    final target = findEmptyCell(gridView);
 
-    // Find an empty (non-given) cell to type into.
-    var targetRow = -1, targetCol = -1;
-    outer:
-    for (var row = 0; row < board.size.side; row++) {
-      for (var col = 0; col < board.size.side; col++) {
-        if (givens.at(row, col) == 0) {
-          targetRow = row;
-          targetCol = col;
-          break outer;
-        }
-      }
-    }
-    expect(targetRow, greaterThanOrEqualTo(0), reason: 'puzzle must have empty cells');
-
-    final cellFinder = find
-        .descendant(
-          of: find.byType(SudokuGridView),
-          matching: find.byType(GestureDetector),
-        )
-        .at(targetRow * board.size.side + targetCol);
-    await tester.tap(cellFinder);
+    await tester.tap(cellFinderAt(target.row, target.col, gridView.board.size.side));
     await tester.pump();
 
     final numberOneFinder = find.descendant(
@@ -50,15 +50,14 @@ void main() {
     await tester.pump();
 
     final updatedGrid = tester.widget<SudokuGridView>(find.byType(SudokuGridView));
-    expect(updatedGrid.board.at(targetRow, targetCol), 1);
+    expect(updatedGrid.board.at(target.row, target.col), 1);
   });
 
   testWidgets('new game sheet regenerates the board at the chosen size', (
     tester,
   ) async {
-    await tester.pumpWidget(
-      const MaterialApp(home: SudokuScreen()),
-    );
+    await tester.pumpWidget(const MaterialApp(home: SudokuScreen()));
+    await tester.pumpAndSettle();
 
     await tester.tap(find.byTooltip('新しいパズル'));
     await tester.pumpAndSettle();
@@ -70,5 +69,71 @@ void main() {
 
     final gridView = tester.widget<SudokuGridView>(find.byType(SudokuGridView));
     expect(gridView.board.size.side, 4);
+  });
+
+  testWidgets('notes mode pencils in a candidate instead of the value', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const MaterialApp(home: SudokuScreen()));
+    await tester.pumpAndSettle();
+
+    final gridView = tester.widget<SudokuGridView>(find.byType(SudokuGridView));
+    final target = findEmptyCell(gridView);
+    final side = gridView.board.size.side;
+
+    await tester.tap(find.byTooltip('メモ入力: オフ(タップでオン)'));
+    await tester.pump();
+
+    await tester.tap(cellFinderAt(target.row, target.col, side));
+    await tester.pump();
+
+    final numberTwoFinder = find.descendant(
+      of: find.byType(NumberPad),
+      matching: find.text('2'),
+    );
+    await tester.ensureVisible(numberTwoFinder);
+    await tester.tap(numberTwoFinder);
+    await tester.pump();
+
+    final afterNote = tester.widget<SudokuGridView>(find.byType(SudokuGridView));
+    expect(afterNote.board.at(target.row, target.col), 0);
+    expect(afterNote.notes[SudokuCell(target.row, target.col)], {2});
+
+    // Tapping the same digit again toggles the note back off.
+    await tester.tap(numberTwoFinder);
+    await tester.pump();
+    final afterToggleOff = tester.widget<SudokuGridView>(find.byType(SudokuGridView));
+    expect(afterToggleOff.notes[SudokuCell(target.row, target.col)], isNull);
+  });
+
+  testWidgets('an in-progress game is restored after the screen is recreated', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const MaterialApp(home: SudokuScreen()));
+    await tester.pumpAndSettle();
+
+    final gridView = tester.widget<SudokuGridView>(find.byType(SudokuGridView));
+    final target = findEmptyCell(gridView);
+    final side = gridView.board.size.side;
+
+    await tester.tap(cellFinderAt(target.row, target.col, side));
+    await tester.pump();
+    final numberFinder = find.descendant(
+      of: find.byType(NumberPad),
+      matching: find.text('1'),
+    );
+    await tester.ensureVisible(numberFinder);
+    await tester.tap(numberFinder);
+    await tester.pump();
+    // Let the fire-and-forget save complete.
+    await tester.pump(const Duration(milliseconds: 50));
+
+    // Recreate the screen (simulates relaunching the app).
+    await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+    await tester.pumpWidget(const MaterialApp(home: SudokuScreen()));
+    await tester.pumpAndSettle();
+
+    final restoredGrid = tester.widget<SudokuGridView>(find.byType(SudokuGridView));
+    expect(restoredGrid.board.at(target.row, target.col), 1);
   });
 }
