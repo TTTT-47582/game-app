@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
@@ -213,21 +214,42 @@ class _SudokuScreenState extends State<SudokuScreen> with WidgetsBindingObserver
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text('クリア！'),
-        content: Text(
-          'おめでとうございます。${_formatDuration(elapsed)}で解けました。'
-          '${changed ? '\n次回は${_difficultyLabel(nextDifficulty)}に挑戦してみましょう。' : ''}',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              _startNewGame(_size, nextDifficulty);
-            },
-            child: const Text('もう一度あそぶ'),
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const _WinCelebrationBadge(),
+              const SizedBox(height: 16),
+              Text(
+                'クリア！',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'おめでとうございます。${_formatDuration(elapsed)}で解けました。'
+                '${changed ? '\n次回は${_difficultyLabel(nextDifficulty)}に挑戦してみましょう。' : ''}',
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: FilledButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    _startNewGame(_size, nextDifficulty);
+                  },
+                  child: const Text('もう一度あそぶ'),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -304,6 +326,80 @@ class _SudokuScreenState extends State<SudokuScreen> with WidgetsBindingObserver
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// A trophy badge that pops in with a handful of dots bursting outward —
+/// shown once when the win dialog opens. A single short animation, not a
+/// looping or flashing effect, to stay calm rather than frantic.
+class _WinCelebrationBadge extends StatefulWidget {
+  const _WinCelebrationBadge();
+
+  @override
+  State<_WinCelebrationBadge> createState() => _WinCelebrationBadgeState();
+}
+
+class _WinCelebrationBadgeState extends State<_WinCelebrationBadge>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 700),
+  )..forward();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final dotColors = [colorScheme.tertiary, colorScheme.primary, colorScheme.secondary];
+
+    return SizedBox(
+      width: 120,
+      height: 120,
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) {
+          final burst = Curves.easeOut.transform(_controller.value);
+          final pop = Curves.elasticOut.transform(_controller.value);
+          return Stack(
+            alignment: Alignment.center,
+            children: [
+              for (var i = 0; i < 6; i++)
+                Opacity(
+                  opacity: (1 - burst).clamp(0.0, 1.0),
+                  child: Transform.translate(
+                    offset: Offset.fromDirection(i / 6 * 2 * math.pi, burst * 44),
+                    child: Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color: dotColors[i % dotColors.length],
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+                ),
+              Transform.scale(
+                scale: pop,
+                child: CircleAvatar(
+                  radius: 36,
+                  backgroundColor: colorScheme.tertiaryContainer,
+                  child: Icon(
+                    Icons.emoji_events,
+                    size: 36,
+                    color: colorScheme.onTertiaryContainer,
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

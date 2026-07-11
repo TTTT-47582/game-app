@@ -136,4 +136,48 @@ void main() {
     final restoredGrid = tester.widget<SudokuGridView>(find.byType(SudokuGridView));
     expect(restoredGrid.board.at(target.row, target.col), 1);
   });
+
+  testWidgets('completing the puzzle shows the win dialog with a celebration badge', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const MaterialApp(home: SudokuScreen()));
+    await tester.pumpAndSettle();
+
+    // Switch to a 4x4 easy puzzle so there are few empty cells to fill.
+    await tester.tap(find.byTooltip('新しいパズル'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('4x4'));
+    await tester.pump();
+    await tester.tap(find.text('やさしい'));
+    await tester.pump();
+    await tester.tap(find.text('この設定で始める'));
+    await tester.pumpAndSettle();
+
+    final gridView = tester.widget<SudokuGridView>(find.byType(SudokuGridView));
+    final side = gridView.board.size.side;
+    final solution = gridView.givens.copy();
+    expect(SudokuSolver.solve(solution), isTrue);
+
+    for (var row = 0; row < side; row++) {
+      for (var col = 0; col < side; col++) {
+        if (gridView.givens.at(row, col) != 0) continue;
+        final cellFinder = cellFinderAt(row, col, side);
+        await tester.ensureVisible(cellFinder);
+        await tester.tap(cellFinder);
+        await tester.pump();
+        final digitFinder = find.descendant(
+          of: find.byType(NumberPad),
+          matching: find.text('${solution.at(row, col)}'),
+        );
+        await tester.ensureVisible(digitFinder);
+        await tester.tap(digitFinder);
+        await tester.pump();
+      }
+    }
+    await tester.pumpAndSettle();
+
+    expect(find.text('クリア！'), findsOneWidget);
+    expect(find.text('もう一度あそぶ'), findsOneWidget);
+    expect(find.byIcon(Icons.emoji_events), findsOneWidget);
+  });
 }
