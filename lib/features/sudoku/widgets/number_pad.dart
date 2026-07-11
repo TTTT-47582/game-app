@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../../../engine/sudoku/sudoku.dart';
 
-/// Digit input row plus a clear button. Buttons are sized at 56dp — above
-/// the 48dp minimum tap-target target for elderly/child-friendly input.
+/// A row of evenly-spaced digit buttons plus a separate, visually distinct
+/// clear button below. Splitting clear onto its own row (rather than
+/// wrapping it in with the digits) keeps the digit row evenly filled
+/// regardless of board size, and its icon+label shape sets it apart from
+/// the digits so it isn't mistaken for one.
 class NumberPad extends StatelessWidget {
   const NumberPad({
     super.key,
@@ -18,27 +21,38 @@ class NumberPad extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      alignment: WrapAlignment.center,
+    return Column(
       children: [
-        for (var value = 1; value <= size.side; value++)
-          _PadButton(
-            label: '$value',
-            onPressed: () => onNumberSelected(value),
+        Row(
+          children: [
+            for (var value = 1; value <= size.side; value++) ...[
+              if (value > 1) const SizedBox(width: 8),
+              Expanded(
+                child: _DigitButton(
+                  label: '$value',
+                  onPressed: () => onNumberSelected(value),
+                ),
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          height: 48,
+          child: OutlinedButton.icon(
+            onPressed: onClear,
+            icon: const Icon(Icons.backspace_outlined),
+            label: const Text('消す'),
           ),
-        _PadButton(
-          label: '消',
-          onPressed: onClear,
         ),
       ],
     );
   }
 }
 
-class _PadButton extends StatelessWidget {
-  const _PadButton({required this.label, required this.onPressed});
+class _DigitButton extends StatelessWidget {
+  const _DigitButton({required this.label, required this.onPressed});
 
   final String label;
   final VoidCallback onPressed;
@@ -46,7 +60,6 @@ class _PadButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 56,
       height: 56,
       child: FilledButton.tonal(
         onPressed: onPressed,
@@ -55,6 +68,7 @@ class _PadButton extends StatelessWidget {
           shape: const RoundedRectangleBorder(
             borderRadius: BorderRadius.all(Radius.circular(12)),
           ),
+          padding: EdgeInsets.zero,
         ),
         child: Text(label),
       ),
