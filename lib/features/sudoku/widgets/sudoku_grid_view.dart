@@ -132,31 +132,16 @@ class _SudokuCellView extends StatelessWidget {
         alignment: Alignment.center,
         child: value == 0
             ? _buildNotes(context)
-            : Stack(
-                alignment: Alignment.center,
-                children: [
-                  Text(
-                    '$value',
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: isGiven ? FontWeight.bold : FontWeight.normal,
-                      color: hasConflict ? colorScheme.error : colorScheme.onSurface,
-                      decoration: hasConflict ? TextDecoration.underline : null,
-                      decorationColor: colorScheme.error,
-                      decorationThickness: 2,
-                    ),
-                  ),
-                  if (hasConflict)
-                    Positioned(
-                      top: 0,
-                      right: 0,
-                      child: Icon(
-                        Icons.error_outline,
-                        size: 11,
-                        color: colorScheme.error,
-                      ),
-                    ),
-                ],
+            : Text(
+                '$value',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: isGiven ? FontWeight.bold : FontWeight.normal,
+                  color: hasConflict ? colorScheme.error : colorScheme.onSurface,
+                  decoration: hasConflict ? TextDecoration.underline : null,
+                  decorationColor: colorScheme.error,
+                  decorationThickness: 2,
+                ),
               ),
       ),
     );
