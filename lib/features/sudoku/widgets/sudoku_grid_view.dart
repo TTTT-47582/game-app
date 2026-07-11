@@ -136,7 +136,6 @@ class _SudokuCellView extends StatelessWidget {
                 '$value',
                 style: TextStyle(
                   fontSize: 22,
-                  fontWeight: isGiven ? FontWeight.bold : FontWeight.normal,
                   color: hasConflict ? colorScheme.error : colorScheme.onSurface,
                   decoration: hasConflict ? TextDecoration.underline : null,
                   decorationColor: colorScheme.error,
