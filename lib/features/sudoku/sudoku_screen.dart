@@ -26,6 +26,8 @@ class _SudokuScreenState extends State<SudokuScreen> with WidgetsBindingObserver
   int _resumedElapsedSeconds = 0;
   final Stopwatch _stopwatch = Stopwatch();
   bool _loading = true;
+  Set<SudokuCell> _celebratingCells = {};
+  Timer? _celebrationTimer;
 
   Duration get _elapsed => Duration(seconds: _resumedElapsedSeconds) + _stopwatch.elapsed;
 
@@ -39,6 +41,7 @@ class _SudokuScreenState extends State<SudokuScreen> with WidgetsBindingObserver
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _celebrationTimer?.cancel();
     super.dispose();
   }
 
@@ -106,10 +109,38 @@ class _SudokuScreenState extends State<SudokuScreen> with WidgetsBindingObserver
     setState(() {
       _board.set(cell.row, cell.col, value);
       _notes.remove(cell);
-      if (_board.conflicts().contains(cell)) _mistakeCount++;
+      final conflicts = _board.conflicts();
+      if (conflicts.contains(cell)) _mistakeCount++;
+      _celebrateNewlyCompletedUnits(cell, conflicts);
     });
     _persist();
     if (_board.isSolved) unawaited(_onSolved());
+  }
+
+  void _celebrateNewlyCompletedUnits(SudokuCell cell, Set<SudokuCell> conflicts) {
+    final rowCells = [for (var c = 0; c < _size.side; c++) SudokuCell(cell.row, c)];
+    final colCells = [for (var r = 0; r < _size.side; r++) SudokuCell(r, cell.col)];
+    final boxRowStart = _size.boxRowStart(cell.row);
+    final boxColStart = _size.boxColStart(cell.col);
+    final boxCells = [
+      for (var r = boxRowStart; r < boxRowStart + _size.boxRows; r++)
+        for (var c = boxColStart; c < boxColStart + _size.boxCols; c++) SudokuCell(r, c),
+    ];
+
+    final completed = <SudokuCell>{};
+    for (final unit in [rowCells, colCells, boxCells]) {
+      if (unit.every((c) => _board.at(c.row, c.col) != 0 && !conflicts.contains(c))) {
+        completed.addAll(unit);
+      }
+    }
+    if (completed.isEmpty) return;
+
+    _celebratingCells = completed;
+    _celebrationTimer?.cancel();
+    _celebrationTimer = Timer(const Duration(milliseconds: 600), () {
+      if (!mounted) return;
+      setState(() => _celebratingCells = {});
+    });
   }
 
   void _clearSelected() {
@@ -129,6 +160,8 @@ class _SudokuScreenState extends State<SudokuScreen> with WidgetsBindingObserver
     _mistakeCount = 0;
     _pauseCount = 0;
     _resumedElapsedSeconds = 0;
+    _celebrationTimer?.cancel();
+    _celebratingCells = {};
     _stopwatch
       ..reset()
       ..start();
@@ -256,6 +289,7 @@ class _SudokuScreenState extends State<SudokuScreen> with WidgetsBindingObserver
                       conflicts: _board.conflicts(),
                       selected: _selected,
                       notes: _notes,
+                      celebratingCells: _celebratingCells,
                       onCellTap: _selectCell,
                     ),
                   ),
