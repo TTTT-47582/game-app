@@ -4,12 +4,20 @@ import 'package:game_app/engine/sudoku/sudoku.dart';
 import 'package:game_app/features/sudoku/sudoku_screen.dart';
 import 'package:game_app/features/sudoku/widgets/number_pad.dart';
 import 'package:game_app/features/sudoku/widgets/sudoku_grid_view.dart';
+import 'package:game_app/theme/game_color_theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
   });
+
+  Widget buildApp() => MaterialApp(
+        home: SudokuScreen(
+          colorTheme: GameColorTheme.forest,
+          onColorThemeChanged: (_) {},
+        ),
+      );
 
   Finder cellFinderAt(int row, int col, int side) => find
       .descendant(
@@ -32,7 +40,7 @@ void main() {
   testWidgets('tapping an empty cell then a digit fills it in', (
     tester,
   ) async {
-    await tester.pumpWidget(const MaterialApp(home: SudokuScreen()));
+    await tester.pumpWidget(buildApp());
     await tester.pumpAndSettle();
 
     final gridView = tester.widget<SudokuGridView>(find.byType(SudokuGridView));
@@ -56,7 +64,7 @@ void main() {
   testWidgets('new game sheet regenerates the board at the chosen size', (
     tester,
   ) async {
-    await tester.pumpWidget(const MaterialApp(home: SudokuScreen()));
+    await tester.pumpWidget(buildApp());
     await tester.pumpAndSettle();
 
     await tester.tap(find.byTooltip('新しいパズル'));
@@ -74,7 +82,7 @@ void main() {
   testWidgets('notes mode pencils in a candidate instead of the value', (
     tester,
   ) async {
-    await tester.pumpWidget(const MaterialApp(home: SudokuScreen()));
+    await tester.pumpWidget(buildApp());
     await tester.pumpAndSettle();
 
     final gridView = tester.widget<SudokuGridView>(find.byType(SudokuGridView));
@@ -109,7 +117,7 @@ void main() {
   testWidgets('an in-progress game is restored after the screen is recreated', (
     tester,
   ) async {
-    await tester.pumpWidget(const MaterialApp(home: SudokuScreen()));
+    await tester.pumpWidget(buildApp());
     await tester.pumpAndSettle();
 
     final gridView = tester.widget<SudokuGridView>(find.byType(SudokuGridView));
@@ -130,7 +138,7 @@ void main() {
 
     // Recreate the screen (simulates relaunching the app).
     await tester.pumpWidget(const MaterialApp(home: SizedBox()));
-    await tester.pumpWidget(const MaterialApp(home: SudokuScreen()));
+    await tester.pumpWidget(buildApp());
     await tester.pumpAndSettle();
 
     final restoredGrid = tester.widget<SudokuGridView>(find.byType(SudokuGridView));
@@ -140,7 +148,7 @@ void main() {
   testWidgets('completing the puzzle shows the win dialog with a celebration badge', (
     tester,
   ) async {
-    await tester.pumpWidget(const MaterialApp(home: SudokuScreen()));
+    await tester.pumpWidget(buildApp());
     await tester.pumpAndSettle();
 
     // Switch to a 4x4 easy puzzle so there are few empty cells to fill.
@@ -179,5 +187,29 @@ void main() {
     expect(find.text('クリア！'), findsOneWidget);
     expect(find.text('もう一度あそぶ'), findsOneWidget);
     expect(find.byIcon(Icons.emoji_events), findsOneWidget);
+  });
+
+  testWidgets('picking a swatch in the theme sheet reports the new theme', (
+    tester,
+  ) async {
+    GameColorTheme? reported;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SudokuScreen(
+          colorTheme: GameColorTheme.forest,
+          onColorThemeChanged: (theme) => reported = theme,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('配色を変える'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('桜'), findsOneWidget);
+    await tester.tap(find.text('桜'));
+    await tester.pumpAndSettle();
+
+    expect(reported, GameColorTheme.sakura);
   });
 }

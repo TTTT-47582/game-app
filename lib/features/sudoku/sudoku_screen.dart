@@ -4,11 +4,19 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../engine/sudoku/sudoku.dart';
+import '../../theme/game_color_theme.dart';
 import 'widgets/number_pad.dart';
 import 'widgets/sudoku_grid_view.dart';
 
 class SudokuScreen extends StatefulWidget {
-  const SudokuScreen({super.key});
+  const SudokuScreen({
+    super.key,
+    required this.colorTheme,
+    required this.onColorThemeChanged,
+  });
+
+  final GameColorTheme colorTheme;
+  final ValueChanged<GameColorTheme> onColorThemeChanged;
 
   @override
   State<SudokuScreen> createState() => _SudokuScreenState();
@@ -265,6 +273,14 @@ class _SudokuScreenState extends State<SudokuScreen> with WidgetsBindingObserver
     if (result != null) _startNewGame(result.$1, result.$2);
   }
 
+  Future<void> _openThemeSheet() async {
+    final result = await showModalBottomSheet<GameColorTheme>(
+      context: context,
+      builder: (context) => _ThemeSheet(current: widget.colorTheme),
+    );
+    if (result != null) widget.onColorThemeChanged(result);
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -287,6 +303,11 @@ class _SudokuScreenState extends State<SudokuScreen> with WidgetsBindingObserver
               tooltip: 'メモ入力: オフ(タップでオン)',
               onPressed: () => setState(() => _notesMode = true),
             ),
+          IconButton(
+            icon: const Icon(Icons.palette_outlined),
+            tooltip: '配色を変える',
+            onPressed: _openThemeSheet,
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: '新しいパズル',
@@ -470,6 +491,82 @@ class _NewGameSheetState extends State<_NewGameSheet> {
             onPressed: () => Navigator.of(context).pop((_size, _difficulty)),
             child: const Text('この設定で始める'),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ThemeSheet extends StatelessWidget {
+  const _ThemeSheet({required this.current});
+
+  final GameColorTheme current;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('配色', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 16,
+            runSpacing: 16,
+            alignment: WrapAlignment.center,
+            children: [
+              for (final theme in GameColorTheme.values)
+                _ThemeSwatch(
+                  theme: theme,
+                  isSelected: theme == current,
+                  onTap: () => Navigator.of(context).pop(theme),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ThemeSwatch extends StatelessWidget {
+  const _ThemeSwatch({
+    required this.theme,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  final GameColorTheme theme;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = ColorScheme.fromSeed(seedColor: theme.seedColor);
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: scheme.primary,
+              shape: BoxShape.circle,
+              border: isSelected
+                  ? Border.all(color: scheme.onSurface, width: 3)
+                  : null,
+            ),
+            alignment: Alignment.center,
+            child: isSelected
+                ? Icon(Icons.check, color: scheme.onPrimary)
+                : null,
+          ),
+          const SizedBox(height: 4),
+          Text(theme.label),
         ],
       ),
     );
